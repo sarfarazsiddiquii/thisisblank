@@ -1,0 +1,35 @@
+{
+  "name": "linkedin-profile-validator",
+  "version": "3.0.0",
+  "description": "Modular LinkedIn profile validator with stealth mode and account rotation",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node index.js --start 1 --end 1",
+    "validate": "node index.js --start 1 --end 10",
+    "help": "echo 'LinkedIn Validator Commands:' && echo 'npm start - Run with default settings' && echo 'npm test - Test single URL' && echo 'npm run validate - Validate 10 URLs'"
+  },
+  "keywords": [
+    "linkedin",
+    "profile",
+    "validation",
+    "puppeteer",
+    "stealth",
+    "modular",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "csv-parser": "^3.2.0",
+    "dotenv": "^17.2.1",
+    "fs-extra": "^11.2.0",
+    "linkedin-profile-scraper": "github:josephlimtech/linkedin-profile-scraper-api",
+    "puppeteer": "^22.15.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
