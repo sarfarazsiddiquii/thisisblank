@@ -11,14 +11,25 @@ class LinkedInValidator {
       throw new Error('LinkedIn cookies are required for validation');
     }
     
-    // Parse cookies if provided as string
-    if (typeof cookies === 'string') {
-      this.cookies = this.parseCookieString(cookies);
+    if (Array.isArray(cookies)) {
+      this.accounts = cookies.map((cookieStr, index) => ({
+        id: `account_${index + 1}`,
+        cookies: typeof cookieStr === 'string' ? this.parseCookieString(cookieStr) : cookieStr,
+        requestCount: 0,
+        lastRequestTime: 0
+      }));
     } else {
-      this.cookies = cookies;
+      const parsedCookies = typeof cookies === 'string' ? this.parseCookieString(cookies) : cookies;
+      this.accounts = [{
+        id: 'account_1',
+        cookies: parsedCookies,
+        requestCount: 0,
+        lastRequestTime: 0
+      }];
     }
     
-    this.axios = createAxios(this.cookies);
+  this.currentAccountIndex = 0;
+  this.maxRequestsPerAccount = parseInt(process.env.MAX_REQUESTS_PER_ACCOUNT, 10) || 3;
   }
 
   parseCookieString(cookieString) {
@@ -31,16 +42,38 @@ class LinkedInValidator {
     });
     return cookies;
   }
+  // Find account with available requests
+  getNextAccount() {
+    for (let i = 0; i < this.accounts.length; i++) {
+      const account = this.accounts[this.currentAccountIndex];
+      
+      if (account.requestCount < this.maxRequestsPerAccount) {
+        return account;
+      }
+      this.currentAccountIndex = (this.currentAccountIndex + 1) % this.accounts.length;
+    }
+    this.accounts.forEach(account => {
+      account.requestCount = 0;
+    });
+    
+    return this.accounts[0];
+  }
 
-  async validateUrl(url) {
+  async validateUrlWithAccount(account, url) {
     try {
+      const axios = createAxios(account.cookies);
       const minDelay = parseInt(process.env.MIN_DELAY) || 2000;
       const maxDelay = parseInt(process.env.MAX_DELAY) || 6000;
       const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay)) + minDelay;
-      
+
+      const timeSinceLastRequest = Date.now() - (account.lastRequestTime || 0);
+      if (timeSinceLastRequest < 3000) {
+        await delay(3000 - timeSinceLastRequest);
+      }
+
       await delay(randomDelay);
 
-      const response = await this.axios({
+      const response = await axios({
         method: 'GET',
         url: url,
         headers: {
@@ -65,7 +98,8 @@ class LinkedInValidator {
         httpCode: response.status,
         valid: this.isValidResponse(response),
         redirectUrl: response.request?.res?.responseUrl || url,
-        headers: response.headers
+        headers: response.headers,
+        accountUsed: account.id
       };
 
       if (this.isLinkedInUrl(url)) {
@@ -76,6 +110,9 @@ class LinkedInValidator {
           result.valid = this.validateLinkedInContent(response.data);
         }
       }
+
+      account.requestCount = (account.requestCount || 0) + 1;
+      account.lastRequestTime = Date.now();
 
       return result;
 
@@ -88,6 +125,12 @@ class LinkedInValidator {
         errorType: this.getErrorType(error)
       };
     }
+  }
+
+  // Backwards-compatible single-url method that auto-chooses the next account
+  async validateUrl(url) {
+    const account = this.getNextAccount();
+    return this.validateUrlWithAccount(account, url);
   }
 
   isValidResponse(response) {
@@ -153,33 +196,38 @@ class LinkedInValidator {
   }
 
   // Batch validate multiple URLs
-  async validateUrls(urls, concurrency = 3) {
+  async validateUrls(urls) {
     const results = [];
-    
-    for (let i = 0; i < urls.length; i += concurrency) {
-      const batch = urls.slice(i, i + concurrency);
-      const batchPromises = batch.map(url => this.validateUrl(url));
-      const batchResults = await Promise.allSettled(batchPromises);
-      
-      batchResults.forEach((result, index) => {
-        if (result.status === 'fulfilled') {
-          results.push(result.value);
+    const perAccountLimit = this.maxRequestsPerAccount;
+
+    for (let a = 0; a < this.accounts.length; a++) {
+      const account = this.accounts[a];
+      if (urls.length === 0) break;
+      const batch = urls.splice(0, perAccountLimit);
+
+      const promises = batch.map(url => this.validateUrlWithAccount(account, url));
+      const settled = await Promise.allSettled(promises);
+
+      settled.forEach((res, idx) => {
+        if (res.status === 'fulfilled') {
+          results.push(res.value);
         } else {
           results.push({
-            url: batch[index],
+            url: batch[idx],
             httpCode: 0,
             valid: false,
-            error: result.reason.message
+            error: res.reason?.message || String(res.reason)
           });
         }
       });
-      if (i + concurrency < urls.length) {
+
+      // small delay between account switches
+      if (a + 1 < this.accounts.length && urls.length > 0) {
         const batchDelay = parseInt(process.env.BATCH_DELAY) || 3000;
-        const randomBatchDelay = Math.floor(Math.random() * 2000) + batchDelay; // +0-2 seconds
+        const randomBatchDelay = Math.floor(Math.random() * 2000) + batchDelay;
         await delay(randomBatchDelay);
       }
     }
-    
     return results;
   }
 }

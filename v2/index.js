@@ -75,14 +75,22 @@ async function main() {
 
 async function handleSingleValidation(args) {
   const url = args[0];
-  const cookies = process.env.LINKEDIN_COOKIES;
+  const cookiesEnv = process.env.LINKEDIN_COOKIES;
 
   if (!url) {
     throw new Error('URL is required for single validation');
   }
 
-  if (!cookies) {
+  if (!cookiesEnv) {
     throw new Error('LinkedIn cookies are required. Set LINKEDIN_COOKIES in .env file.');
+  }
+  
+  // Parse cookies (support both single string and JSON array)
+  let cookies;
+  try {
+    cookies = JSON.parse(cookiesEnv); // Try JSON array first
+  } catch {
+    cookies = cookiesEnv; // Fall back to single string
   }
   
   const validator = new LinkedInValidator(cookies);
@@ -106,10 +114,18 @@ async function handleSingleValidation(args) {
 }
 
 async function handleBatchValidation(args) {
-  const cookies = process.env.LINKEDIN_COOKIES;
+  const cookiesEnv = process.env.LINKEDIN_COOKIES;
   
-  if (!cookies) {
+  if (!cookiesEnv) {
     throw new Error('LinkedIn cookies are required. Set LINKEDIN_COOKIES in .env file.');
+  }
+
+  // Parse cookies (support both single string and JSON array)
+  let cookies;
+  try {
+    cookies = JSON.parse(cookiesEnv); // Try JSON array first
+  } catch {
+    cookies = cookiesEnv; // Fall back to single string
   }
 
   let urlsFile = 'urls.txt';
@@ -133,6 +149,15 @@ async function handleBatchValidation(args) {
 
   if (urls.length === 0) {
     throw new Error('No URLs found in file');
+  }
+  // Support --limit N to cap total URLs processed in this run
+  const limitIndex = args.indexOf('--limit');
+  if (limitIndex !== -1 && args[limitIndex + 1]) {
+    const parsedLimit = parseInt(args[limitIndex + 1], 10);
+    if (!isNaN(parsedLimit) && parsedLimit > 0) {
+      console.log(`Limiting run to first ${parsedLimit} URLs (of ${urls.length})`);
+      urls.splice(parsedLimit); // keep only first N
+    }
   }
 
   console.log(`validating ${urls.length} URLs...`);
