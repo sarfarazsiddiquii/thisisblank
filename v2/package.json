@@ -1,0 +1,16 @@
+{
+  "name": "linkedin-url-validator",
+  "version": "1.0.0",
+  "description": "Simple LinkedIn URL validator using session cookies",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "axios-cookiejar-support": "^5.0.5",
+    "dotenv": "^16.6.1",
+    "tough-cookie": "^4.1.4"
+  }
+}
